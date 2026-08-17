@@ -1,0 +1,73 @@
+name: Sync formula from keel
+
+# The source repo cannot push here without a personal access token, because a
+# workflow's GITHUB_TOKEN is scoped to its own repository. So the direction is
+# inverted: this tap *pulls*. Reading a public repository needs no credential at
+# all, and the GITHUB_TOKEN below is scoped to this repo — the one being written.
+# Nothing to create, store, rotate, or leak.
+#
+# The trade is latency: up to the schedule interval, or zero via "Run workflow".
+# Acceptable because keel's release already fails if the formula does not hash to
+# the tarball it names, so what arrives here late is at least installable.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-formula
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Fetch the formula from the source repo
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            -H "Accept: application/vnd.github.raw" \
+            "https://api.github.com/repos/berkayturanci/keel/contents/Formula/keel.rb" \
+            -o /tmp/incoming.rb
+          test -s /tmp/incoming.rb
+
+      - name: Refuse to publish a formula that cannot install
+        # This tap is what `brew install` reads, so a broken formula here is a
+        # broken install for everyone. Never mirror blindly: resolve the url and
+        # re-hash the artifact exactly as brew will. keel 1.16.0 shipped with the
+        # previous release's digest and `brew install` refused (keel#805) — a tap
+        # that copies whatever it is handed would have republished that faithfully.
+        run: |
+          set -euo pipefail
+          url=$(grep -m1 -oE '^  url "[^"]+"' /tmp/incoming.rb | cut -d'"' -f2)
+          want=$(grep -m1 -oE '^  sha256 "[0-9a-f]{64}"' /tmp/incoming.rb | cut -d'"' -f2)
+          echo "url:  $url"
+          curl -fsSL "$url" -o /tmp/artifact
+          got=$(sha256sum /tmp/artifact | cut -d' ' -f1)
+          if [ "$want" != "$got" ]; then
+            echo "::error::incoming formula's sha256 does not match its own url; not publishing"
+            echo "want $want"
+            echo "got  $got"
+            exit 1
+          fi
+          echo "verified"
+
+      - name: Commit when it differs
+        run: |
+          set -euo pipefail
+          if diff -q /tmp/incoming.rb Formula/keel.rb >/dev/null 2>&1; then
+            echo "already in sync"
+            exit 0
+          fi
+          cp /tmp/incoming.rb Formula/keel.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/keel.rb
+          git commit -m "chore: sync formula from berkayturanci/keel"
+          git push
