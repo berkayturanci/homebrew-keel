@@ -1,0 +1,48 @@
+# What `brew install` will do, run here before a user runs it.
+#
+# This repository is the copy `brew` downloads, and until now it had no test of
+# any kind. Its formula is written by `sync-formula.yml` on a schedule — no pull
+# request, no review — so the first signal that a sync had produced something
+# unusable was somebody's failed install.
+#
+# The upstream repository's guards are not a substitute. They run on pull
+# requests, against a file that is *copied* here.
+#
+# `workflow_run` is the trigger that matters: it fires after each sync, so a lag
+# between an upstream release and the next sync is never what fails. What fails
+# is a sync that ran and produced a formula that cannot install.
+name: Verify the formula
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_run:
+    workflows: ["Sync formula from keel"]
+    types: [completed]
+  schedule:
+    # Daily. The upstream artifact can stop resolving without anything here
+    # changing — a deleted tag, a yanked release — and nothing else would notice.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Formula installs what it claims
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Verify the formula
+        # Downloads every url in the formula and re-hashes it — the source
+        # tarball and every vendored `resource`. The sync job checks only the
+        # top-level digest; a wrong vendored one fails the install just as hard
+        # (keel#787: every command dying on `import yaml`).
+        env:
+          KEEL_TAP_CHECK_EXTERNAL: "1"
+        run: python3 -m unittest discover -s tests -v
