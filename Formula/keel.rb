@@ -3,8 +3,8 @@ class Keel < Formula
 
   desc "Project-neutral, multi-agent workflow core and autonomous issue shipping backbone"
   homepage "https://github.com/berkayturanci/keel"
-  url "https://github.com/berkayturanci/keel/archive/refs/tags/v1.23.0.tar.gz"
-  sha256 "16a0ea97a804ab3ded7edbc65927a21b49a89c144ee0b0e6f906572418453973"
+  url "https://github.com/berkayturanci/keel/archive/refs/tags/v1.23.1.tar.gz"
+  sha256 "350b1b4fee03a2e3b3e0a9762ec17eeb5309feab9602f814ef658e4bfed9d065"
   license "Apache-2.0"
   head "https://github.com/berkayturanci/keel.git", branch: "main"
 
@@ -33,6 +33,6 @@ class Keel < Formula
   end
 
   test do
-    assert_match "keel 1.23.0", shell_output("#{bin}/keel version")
+    assert_match "keel 1.23.1", shell_output("#{bin}/keel version")
   end
 end
